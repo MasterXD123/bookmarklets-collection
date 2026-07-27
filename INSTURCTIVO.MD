@@ -1,39 +1,31 @@
-<div align="center">
+# 🚀 Bookmarklet Loader via GitHub + jsDelivr
 
-# 🚀 Bookmarklets Collection
-
-*Una colección de scripts ligeros, útiles e inyectables para optimizar tu navegación.*
-
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/MasterXD123/bookmarklets-collection)
-[![CDN Status](https://img.shields.io/badge/jsDelivr-Accelerated-ff5627?style=for-the-badge&logo=jsdelivr)](https://www.jsdelivr.net/)
-[![License](https://img.shields.io/badge/License-MIT-blue.style=for-the-badge)](#-licencia)
-
-</div>
+Guía rápida para convertir cualquier script `.js` alojado en GitHub en un **Bookmarklet (marcador inteligente)** funcional, sin límites de tamaño y sin errores de **CORS / CORB**.
 
 ---
 
-## 📌 ¿Qué es esto?
+## 🛠️ ¿Cómo funciona?
 
-Esta colección contiene varios **Bookmarklets** (marcadores inteligentes) diseñados para ejecutarse en cualquier sitio web sin necesidad de instalar extensiones pesadas en tu navegador.
-
-Usan el CDN de **jsDelivr** para cargar la última versión del código almacenado en este repositorio de forma ultra rápida, segura y **evitando bloqueos de CORS / CORB**.
-
----
-
-## 🛠️ Cómo agregar un Bookmarklet a tu navegador
-
-1. Muestra la **Barra de Marcadores** de tu navegador (`Ctrl + Shift + B` o `Cmd + Shift + B`).
-2. Haz **clic derecho** en un espacio vacío de la barra y selecciona **Añadir página / Agregar marcador**.
-3. Asigna el **Nombre** que prefieras.
-4. En el campo **URL / Dirección**, pega la línea de código del bookmarklet correspondiente (las encuentras abajo).
-5. ¡Listo! Solo haz clic sobre el marcador cuando estés en la página donde quieras usarlo.
+1. Subes tu script `.js` a GitHub.
+2. Pasas la ruta por **jsDelivr** (para que el navegador lo interprete como JavaScript y no como texto plano).
+3. Creas un marcador corto con un *loader* dinámico.
 
 ---
 
-## 📂 Marcadores Disponibles
+## 📐 La Estructura de la URL (jsDelivr)
 
-### 🖼️ SnapMedia Gallery
-Extrae y visualiza de forma elegante todas las imágenes, GIF y videos detectados en la página web actual en un visor tipo galería con controles de zoom, rotación y descarga.
+Para que GitHub no bloquee la ejecución del código, reemplaza la URL normal por esta estructura:
+
+`https://cdn.jsdelivr.net/gh/TU_USUARIO/TU_REPOSITORIO@RAMA/RUTA/AL/ARCHIVO.js`
+
+> **Ejemplo:**
+> `https://cdn.jsdelivr.net/gh/MasterXD123/bookmarklets-collection@main/Bm-snapmedia-2.js`
+
+---
+
+## 📦 Plantilla del Cargador (Loader)
+
+Copia este código, cambia la URL por la tuya y pégalo directamente en la **URL / Dirección** de tu marcador:
 
 ```javascript
-javascript:(function(){var s=document.createElement('script');s.src='[https://cdn.jsdelivr.net/gh/MasterXD123/bookmarklets-collection@main/Bm-snapmedia-2.js?v='+Date.now();document.head.appendChild(s](https://cdn.jsdelivr.net/gh/MasterXD123/bookmarklets-collection@main/Bm-snapmedia-2.js?v='+Date.now();document.head.appendChild(s));})();
+javascript:(function(){var s=document.createElement('script');s.src='[https://cdn.jsdelivr.net/gh/TU_USUARIO/TU_REPOSITORIO@main/TU_ARCHIVO.js?v='+Date.now();document.head.appendChild(s](https://cdn.jsdelivr.net/gh/TU_USUARIO/TU_REPOSITORIO@main/TU_ARCHIVO.js?v='+Date.now();document.head.appendChild(s));})();

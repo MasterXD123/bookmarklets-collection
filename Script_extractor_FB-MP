@@ -1,0 +1,341 @@
+javascript:(function () {
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+
+  /* ---------- Metadatos ---------- */
+  function getKeyword() {
+    const el = $('input[aria-label="Buscar en Marketplace"]')
+            || $('input[type="search"][role="combobox"]');
+    return el ? el.value.trim() : "sin_keyword";
+  }
+  function findText(re) {
+    const arr = $$('span[dir="auto"]');
+    for (let i = 0; i < arr.length; i++) {
+      const t = arr[i].textContent.trim();
+      if (re.test(t)) return t;
+    }
+    return null;
+  }
+  const getNotice  = () => findText(/No se encontraron resultados para/i);
+  const getSection = () => findText(/Resultados relacionados/i);
+
+  /* ---------- Precio ---------- */
+  function curCode(c) {
+    if (!c) return null;
+    if (c === "S/")  return "PEN";
+    if (c === "US$" || c === "$") return "USD";
+    if (c === "€")   return "EUR";
+    if (c === "£")   return "GBP";
+    return c;
+  }
+  function parsePrice(text) {
+    if (!text) return { value: null, currency: null, raw: text };
+    const raw = String(text).trim();
+    if (/^gratis$/i.test(raw)) return { value: 0, currency: null, raw };
+    const m   = raw.match(/US\$|S\/|€|£|\$/);
+    const cur = m ? m[0] : null;
+    const numStr = raw.replace(/[^\d.,]/g, "");
+    if (!numStr) return { value: null, currency: cur, raw };
+    let n;
+    if (/^\d{1,3}([.,]\d{3})+([.,]\d{1,2})?$/.test(numStr)) {
+      n = parseFloat(numStr.replace(/[.,](?=\d{3}(\D|$))/g, "").replace(",", "."));
+    } else {
+      n = parseFloat(numStr.replace(",", "."));
+    }
+    return { value: isFinite(n) ? n : null, currency: cur, raw };
+  }
+
+  /* ---------- Parsers de tarjeta ---------- */
+  function parseAria(label) {
+    if (!label) return null;
+    const p = label.split(/, /);
+    if (p.length < 5) return null;
+    const m = p[p.length - 1].match(/^publicación\s+(\d+)$/);
+    if (!m) return null;
+    return {
+      item_id:    m[1],
+      department: p[p.length - 2],
+      location:   p[p.length - 3],
+      price_raw:  p[p.length - 4],
+      title:      p.slice(0, p.length - 4).join(", ")
+    };
+  }
+  function fromSpans(a) {
+    const s = a.querySelectorAll('span[dir="auto"]');
+    if (s.length < 3) return null;
+    return {
+      price_raw: s[0].textContent.trim(),
+      title:     s[1].textContent.trim(),
+      location:  s[2].textContent.trim()
+    };
+  }
+  function extractProducts() {
+    const seen = {}, out = [];
+    $$('a[href*="/marketplace/item/"]').forEach(a => {
+      const m = (a.getAttribute("href") || "").match(/\/marketplace\/item\/(\d+)/);
+      if (!m) return;
+      const id = m[1];
+      if (seen[id]) return;
+      seen[id] = 1;
+
+      let d = parseAria(a.getAttribute("aria-label"));
+      if (!d) {
+        const f = fromSpans(a);
+        if (!f) return;
+        d = { item_id: id, price_raw: f.price_raw, title: f.title, location: f.location, department: null };
+      }
+
+      const img = a.querySelector("img[src]");
+      const p   = parsePrice(d.price_raw);
+
+      out.push({
+        item_id:    id,
+        title:      d.title,
+        price:      p.value,
+        currency:   curCode(p.currency),
+        price_raw:  d.price_raw,
+        location:   d.location   || null,
+        department: d.department || null,
+        image_url:  img ? img.src : null,
+        url:        "https://www.facebook.com/marketplace/item/" + id + "/"
+      });
+    });
+    return out;
+  }
+
+  /* ---------- Toast ---------- */
+  function showToast(msg, ok) {
+    const t = document.createElement("div");
+    t.textContent = msg;
+    Object.assign(t.style, {
+      position: "fixed", bottom: "20px", right: "20px",
+      backgroundColor: ok ? "#2ecc71" : "#e74c3c",
+      color: "#fff", padding: "12px 24px", borderRadius: "8px",
+      fontFamily: "sans-serif", fontSize: "14px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+      zIndex: "99999", opacity: "0", transition: "opacity 0.3s ease"
+    });
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = "1"; }, 100);
+    setTimeout(() => {
+      t.style.opacity = "0";
+      setTimeout(() => { t.remove(); }, 300);
+    }, 4000);
+  }
+
+  /* ---------- COPIAR: 3 capas ---------- */
+  function tryExecCommand(json) {
+    try {
+      window.focus();
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur();
+      }
+      const ta = document.createElement("textarea");
+      ta.value = json;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;padding:0;border:0;outline:none;opacity:0.01;";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      if (ta.setSelectionRange) ta.setSelectionRange(0, json.length);
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function copyJSON(json) {
+    return new Promise(function (resolve) {
+      // 1) execCommand (síncrono, aún dentro del gesto)
+      const ok = tryExecCommand(json);
+      if (ok) { resolve(true); return; }
+
+      // 2) clipboard API (async)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json)
+          .then(() => resolve(true))
+          .catch(() => resolve(false));
+      } else {
+        resolve(false);
+      }
+    });
+  }
+
+  /* ---------- Modal de respaldo ---------- */
+  function showCopyFallback(json) {
+    const old = document.getElementById("fb-mkt-copy-modal");
+    if (old) old.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "fb-mkt-copy-modal";
+    Object.assign(overlay.style, {
+      position: "fixed", top: "0", left: "0", width: "100vw", height: "100vh",
+      background: "rgba(0,0,0,0.7)", zIndex: "999999",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      fontFamily: "system-ui, sans-serif"
+    });
+
+    const modal = document.createElement("div");
+    Object.assign(modal.style, {
+      background: "#fff", padding: "20px", borderRadius: "12px",
+      width: "90%", maxWidth: "700px", maxHeight: "85vh",
+      display: "flex", flexDirection: "column", gap: "10px",
+      boxShadow: "0 8px 32px rgba(0,0,0,0.3)", boxSizing: "border-box"
+    });
+
+    const title = document.createElement("h3");
+    title.textContent = "Copia manual del JSON";
+    title.style.margin = "0";
+
+    const hint = document.createElement("p");
+    hint.textContent = "El texto ya está seleccionado. Presiona Ctrl+C (Windows/Linux) o Cmd+C (Mac), o pulsa el botón Copiar.";
+    hint.style.cssText = "margin:0;color:#65676b;font-size:13px;";
+
+    const ta = document.createElement("textarea");
+    ta.value = json;
+    ta.style.cssText = "width:100%;height:400px;font-family:monospace;font-size:12px;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;resize:vertical;";
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+
+    const copyBtn = document.createElement("button");
+    copyBtn.textContent = "Copiar";
+    Object.assign(copyBtn.style, {
+      padding: "8px 16px", borderRadius: "6px", border: "none",
+      background: "#2ecc71", color: "#fff", cursor: "pointer", fontSize: "14px"
+    });
+    copyBtn.onclick = function () {
+      copyJSON(json).then(function (ok) {
+        hint.textContent = ok
+          ? "✅ ¡Copiado!"
+          : "❌ Sigue fallando. Selecciona todo (Ctrl+A) y presiona Ctrl+C.";
+        if (ok) setTimeout(function () { overlay.remove(); }, 800);
+      });
+    };
+
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "Cerrar";
+    Object.assign(closeBtn.style, {
+      padding: "8px 16px", borderRadius: "6px", border: "none",
+      background: "#1877F2", color: "#fff", cursor: "pointer", fontSize: "14px"
+    });
+    closeBtn.onclick = function () { overlay.remove(); };
+
+    btnRow.appendChild(copyBtn);
+    btnRow.appendChild(closeBtn);
+    modal.appendChild(title);
+    modal.appendChild(hint);
+    modal.appendChild(ta);
+    modal.appendChild(btnRow);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    // Autoselección tras render + reintento
+    setTimeout(function () {
+      ta.focus();
+      ta.select();
+      if (ta.setSelectionRange) ta.setSelectionRange(0, json.length);
+      try { document.execCommand("copy"); } catch (e) {}
+    }, 50);
+  }
+
+  /* ---------- Exportación ---------- */
+  function buildData() {
+    return {
+      source:  "facebook_marketplace_search",
+      keyword: getKeyword(),
+      date:    new Date().toISOString().slice(0, 10),
+      notice:  getNotice(),
+      section: getSection(),
+      products: extractProducts()
+    };
+  }
+
+  function downloadJSON() {
+    const data = buildData();
+    if (data.products.length === 0) {
+      showToast("⚠️ No se encontraron productos", false);
+      return;
+    }
+    const json = JSON.stringify(data, null, 2);
+    copyJSON(json);  // también copia
+
+    const blob = new Blob([json], { type: "application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = "fbmarket_"
+               + data.keyword.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_-]/g, "")
+               + "_" + data.date + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    showToast("⬇️ Descargado (" + data.products.length + ")", true);
+  }
+
+  /* ---------- Forzar foco al inicio ---------- */
+  try {
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    window.focus();
+  } catch (e) {}
+
+  /* ---------- Ejecución principal ---------- */
+  const data     = buildData();
+  const products = data.products;
+
+  if (products.length > 0) {
+    const json = JSON.stringify(data, null, 2);
+    console.log("📦 Productos:", products.length);
+    console.log("📋 JSON:", products);
+
+    copyJSON(json).then(function (copied) {
+      if (copied) {
+        showToast("✅ " + products.length + " productos copiados al portapapeles", true);
+      } else {
+        showToast("⚠️ Copia manual: presiona Ctrl+C en el cuadro", false);
+        showCopyFallback(json);
+      }
+    });
+  } else {
+    showToast("⚠️ No se encontraron productos en esta página", false);
+  }
+
+  // Atajo Shift+Alt+D
+  if (window.__fbMktKey) {
+    document.removeEventListener("keydown", window.__fbMktKey);
+  }
+  window.__fbMktKey = function (e) {
+    if (e.shiftKey && e.altKey && e.key === "D") {
+      e.preventDefault();
+      downloadJSON();
+    }
+  };
+  document.addEventListener("keydown", window.__fbMktKey);
+
+  // Botón flotante azul
+  if (document.getElementById("btn-flotante-descarga-fbmarket")) {
+    document.getElementById("btn-flotante-descarga-fbmarket").remove();
+  }
+  const btn = document.createElement("button");
+  btn.id = "btn-flotante-descarga-fbmarket";
+  btn.textContent = "⬇";
+  btn.setAttribute("aria-label", "Descargar JSON Marketplace");
+  Object.assign(btn.style, {
+    position: "fixed", bottom: "80px", right: "20px",
+    width: "50px", height: "50px", borderRadius: "50%",
+    backgroundColor: "#1877F2", color: "#fff", border: "none",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontSize: "24px", cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    zIndex: "99999", transition: "transform 0.2s"
+  });
+  btn.addEventListener("mouseenter", function () { this.style.transform = "scale(1.1)"; });
+  btn.addEventListener("mouseleave", function () { this.style.transform = "scale(1)"; });
+  btn.addEventListener("click", downloadJSON);
+  document.body.appendChild(btn);
+})();
